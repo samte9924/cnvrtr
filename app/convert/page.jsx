@@ -7,9 +7,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
@@ -26,13 +23,49 @@ import {
   Video,
   X,
 } from "lucide-react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 const icons = {
   video: <Video width={30} height={30} />,
   audio: <Music width={30} height={30} />,
   image: <Image width={30} height={30} />,
 };
+
+const audioMIMETypes = [
+  { type: "mpeg", name: "mp3" },
+  { type: "wav", name: "wav" },
+  { type: "ogg", name: "ogg" },
+  { type: "aac", name: "aac" },
+  { type: "flac", name: "flac" },
+  { type: "x-ms-wma", name: "wma" },
+  { type: "aiff", name: "aiff" },
+  { type: "mp4", name: "m4a" },
+];
+
+const videoMIMETypes = [
+  { type: "mp4", name: "mp4" },
+  { type: "mp4v-es", name: "mp4v" },
+  { type: "ogg", name: "ogv" },
+  { type: "x-msvideo", name: "avi" },
+  { type: "3gpp", name: "3gp" },
+  { type: "quicktime", name: "mov" },
+  { type: "x-flv", name: "flv" },
+  { type: "x-matroska", name: "mkv" },
+  { type: "x-ms-wmv", name: "wmv" },
+];
+
+const imageMIMETypes = [
+  { type: "jpeg", name: "jpeg" },
+  { type: "png", name: "png" },
+  { type: "gif", name: "gif" },
+  { type: "bmp", name: "bmp" },
+  { type: "webp", name: "webp" },
+  { type: "tiff", name: "tiff" },
+  { type: "svg+xml", name: "svg" },
+  { type: "x-icon", name: "ico" },
+  { type: "heif", name: "heif" },
+  { type: "avif", name: "avif" },
+];
 
 function Convert() {
   const ffmpegRef = useRef(new FFmpeg());
@@ -42,13 +75,17 @@ function Convert() {
   const [output, setOutput] = useState(null);
 
   const [files, setFiles] = useState(null);
-  const [name, setName] = useState(null);
   const [size, setSize] = useState(null);
-  const [type, setType] = useState("");
+  const [inputName, setInputName] = useState("");
+  const [inputType, setInputType] = useState("");
+  const [inputExtention, setInputExtention] = useState("");
 
   const [areaFocus, setAreaFocus] = useState(false);
 
   const [convertTo, setConvertTo] = useState("");
+
+  const [success, setSuccess] = useState(null);
+  const [error, setError] = useState(null);
 
   const loadFFmpeg = async () => {
     const baseURL = "https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd";
@@ -68,26 +105,37 @@ function Convert() {
           "application/wasm"
         ),
       });
-      console.log("FFmpeg pronto");
       setReadyFFmpeg(true);
     } catch (error) {
       console.error("Errore nel caricamento di FFmpeg:", error);
     }
   };
 
-  const convertToMP3 = async () => {
+  const convertFile = async () => {
     const ffmpeg = ffmpegRef.current;
+
     setConverting(true);
-
     try {
-      await ffmpeg.writeFile("input.mp4", await fetchFile(files));
-      await ffmpeg.exec(["-i", "input.mp4", "output.mp3"]);
-      const data = await ffmpeg.readFile("output.mp3");
+      console.log(`${inputName}.${inputExtention}`);
+      await ffmpeg.writeFile(
+        `${inputName}.${inputExtention}`,
+        await fetchFile(files)
+      );
+      await ffmpeg.exec([
+        "-i",
+        `${inputName}.${inputExtention}`,
+        `output.${convertTo.name}`,
+      ]);
+      const data = await ffmpeg.readFile(`output.${convertTo.name}`);
 
-      const audioBlob = new Blob([data.buffer], { type: "audio/mp3" });
+      const audioBlob = new Blob([data.buffer], {
+        type: `${inputType}/${convertTo.type}`,
+      });
       const audioURL = URL.createObjectURL(audioBlob);
       setOutput(audioURL);
+      setSuccess("Completato");
     } catch (error) {
+      setError("Errore");
       console.log("Errore durante la conversione:", error);
     }
 
@@ -97,29 +145,54 @@ function Convert() {
   const handleFileUpload = async (e) => {
     const file = e.target.files[0];
     if (file) {
-      setFiles(file);
-      setName(file.name);
-      setSize(file.size);
-      setType(file.type.split("/")[0]);
-
-      if (!readyFFmpeg) {
-        await loadFFmpeg();
+      let fileName = file.name.split(".")[0];
+      for (let i = 0; i < file.name.split(".").length - 2; i++) {
+        fileName += file.name.split(".")[i];
       }
+      const fileExtention =
+        file.name.split(".")[file.name.split(".").length - 1];
+      console.log(fileExtention);
+      console.log(fileName);
+
+      setFiles(file);
+      console.log(file.type);
+      setInputName(fileName);
+      setSize(calculateSize(file.size));
+      setInputType(file.type.split("/")[0]);
+      setInputExtention(fileExtention);
+
+      if (!readyFFmpeg) await loadFFmpeg();
     } else {
       alert("Carica un file valido.");
     }
   };
 
+  const calculateSize = (fileSize) => {
+    const kb = 1000;
+    const mb = 1000000;
+    const gb = 1000000000;
+
+    if (fileSize >= kb && fileSize < mb)
+      return (fileSize / kb).toFixed(2) + " KB";
+    if (fileSize >= mb && fileSize < gb)
+      return (fileSize / mb).toFixed(2) + " MB";
+    if (fileSize >= gb) return (fileSize / gb).toFixed(2) + " GB";
+  };
+
   const resetFilesStatus = () => {
     setFiles(null);
     setOutput(null);
+    setSize(null);
+    setInputType("");
     setConvertTo("");
+    setSuccess(null);
+    setError(null);
   };
 
   return (
     <div className="w-full">
       <div className="max-w-[90%] mx-auto my-20 flex flex-col justify-center items-center">
-        <h2 className="text-5xl">Convert file to mp3 without limits</h2>
+        <h2 className="text-5xl">Convert files without limits</h2>
         <div className="w-full mt-10 p-5">
           {!files && (
             <div
@@ -189,16 +262,15 @@ function Convert() {
                 <X />
               </span>
               <div className="flex items-center col-span-2">
-                {type && (icons[type] || <File width={30} height={30} />)}
-                <h2 className="ml-3">{name || "Nome del file aggiunto"}</h2>
-                <h4 className="ml-2 text-gray-500 text-sm">
-                  {size || "Size"} bytes
-                </h4>
+                {inputType &&
+                  (icons[inputType] || <File width={30} height={30} />)}
+                <h2 className="ml-3">{files && files.name}</h2>
+                <h4 className="ml-2 text-gray-500 text-sm">{size || "Size"}</h4>
               </div>
               {!convertTo ? (
                 <div className="flex items-center justify-end">
                   <DropdownMenu>
-                    <DropdownMenuTrigger>
+                    <DropdownMenuTrigger asChild>
                       <Button variant="outline">
                         <div className="flex gap-2 items-center">
                           <h2>Converti in</h2>
@@ -207,39 +279,63 @@ function Convert() {
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent>
-                      <Tabs defaultValue="video">
+                      <Tabs
+                        defaultValue={inputType === "image" ? "image" : "video"}
+                      >
                         <TabsList className="w-full border">
-                          <TabsTrigger value="video" className="w-1/2">
-                            Video
-                          </TabsTrigger>
-                          <TabsTrigger value="audio" className="w-1/2">
-                            Audio
-                          </TabsTrigger>
+                          {inputType === "video" && (
+                            <TabsTrigger value="video" className="w-1/2">
+                              Video
+                            </TabsTrigger>
+                          )}
+                          {(inputType === "video" || inputType === "audio") && (
+                            <TabsTrigger value="audio" className="w-1/2">
+                              Audio
+                            </TabsTrigger>
+                          )}
+                          {inputType === "image" && (
+                            <TabsTrigger value="image" className="w-full">
+                              Image
+                            </TabsTrigger>
+                          )}
                         </TabsList>
                         <TabsContent value="video">
                           <div className="grid grid-cols-4 grid-rows-4 gap-1">
-                            <div
-                              className="cursor-pointer border p-3 flex items-center justify-center hover:bg-gray-200 rounded-lg"
-                              onClick={() => setConvertTo("mp4")}
-                            >
-                              MP4
-                            </div>
+                            {videoMIMETypes.map((item, index) => (
+                              <div
+                                key={index}
+                                onClick={() => setConvertTo(item)}
+                                className="cursor-pointer border p-3 flex items-center justify-center hover:bg-gray-200 rounded-lg"
+                              >
+                                .{item.name}
+                              </div>
+                            ))}
                           </div>
                         </TabsContent>
                         <TabsContent value="audio">
                           <div className="grid grid-cols-4 grid-rows-4 gap-1">
-                            <div
-                              className="cursor-pointer border p-3 flex items-center justify-center hover:bg-gray-200 rounded-lg"
-                              onClick={() => setConvertTo("mp3")}
-                            >
-                              MP3
-                            </div>
-                            <div
-                              className="cursor-pointer border p-3 flex items-center justify-center hover:bg-gray-200 rounded-lg"
-                              onClick={() => setConvertTo("mpeg")}
-                            >
-                              mpeg
-                            </div>
+                            {audioMIMETypes.map((item, index) => (
+                              <div
+                                key={index}
+                                onClick={() => setConvertTo(item)}
+                                className="cursor-pointer border p-3 flex items-center justify-center hover:bg-gray-200 rounded-lg"
+                              >
+                                .{item.name}
+                              </div>
+                            ))}
+                          </div>
+                        </TabsContent>
+                        <TabsContent value="image">
+                          <div className="grid grid-cols-4 grid-rows-4 gap-1">
+                            {imageMIMETypes.map((item, index) => (
+                              <div
+                                key={index}
+                                onClick={() => setConvertTo(item)}
+                                className="cursor-pointer border p-3 flex items-center justify-center hover:bg-gray-200 rounded-lg"
+                              >
+                                .{item.name}
+                              </div>
+                            ))}
                           </div>
                         </TabsContent>
                       </Tabs>
@@ -253,8 +349,10 @@ function Convert() {
                       className={`absolute h-3 w-3 -top-1 -left-1 rounded-full ${
                         converting
                           ? "bg-orange-500"
-                          : output
+                          : success
                           ? "bg-green-500"
+                          : error
+                          ? "bg-red-500"
                           : "bg-gray-500"
                       }`}
                     >
@@ -264,16 +362,18 @@ function Convert() {
                     </span>
                     <Badge>
                       {converting
-                        ? "Conversione..."
-                        : output
+                        ? "Conversione"
+                        : success
                         ? "Completato"
+                        : error
+                        ? "Errore"
                         : "In attesa"}
                     </Badge>
                   </div>
                   {!output ? (
                     <Button
-                      onClick={convertToMP3}
-                      disabled={converting || !files}
+                      onClick={convertFile}
+                      disabled={converting || error || success}
                     >
                       {converting ? (
                         <div className="flex items-center">
@@ -284,13 +384,16 @@ function Convert() {
                           />
                         </div>
                       ) : (
-                        "Converti in MP3"
+                        `Converti in ${convertTo.name}`
                       )}
                     </Button>
                   ) : (
                     <div>
-                      <a href={output} download={"output.mp3"}>
-                        <Button>Scarica mp3</Button>
+                      <a
+                        href={output}
+                        download={`${inputName}.${convertTo.name}`}
+                      >
+                        <Button>Scarica</Button>
                       </a>
                     </div>
                   )}
