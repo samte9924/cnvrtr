@@ -67,21 +67,16 @@ const imageMIMETypes = [
   { type: "avif", name: "avif" },
 ];
 
-function Convert() {
+function Page() {
   const ffmpegRef = useRef(new FFmpeg());
   const [readyFFmpeg, setReadyFFmpeg] = useState(false);
 
-  const [converting, setConverting] = useState(false);
   const [output, setOutput] = useState(null);
 
   const [files, setFiles] = useState([]);
+  const [convertedFiles, setConvertedFiles] = useState([]);
 
   const [areaFocus, setAreaFocus] = useState(false);
-
-  const [convertTo, setConvertTo] = useState("");
-
-  const [success, setSuccess] = useState(false);
-  const [error, setError] = useState(false);
 
   const loadFFmpeg = async () => {
     const baseURL = "https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd";
@@ -107,42 +102,60 @@ function Convert() {
     }
   };
 
-  const convertFile = async () => {
+  const convertSingleFile = async (file) => {
     const ffmpeg = ffmpegRef.current;
 
-    setConverting(true);
+    updateFileConverting(file.id, true);
     try {
-      console.log(`${files[0].name}.${files[0].extention}`);
+      console.log(`${file.name}.${file.extention}`);
       await ffmpeg.writeFile(
-        `${files[0].name}.${files[0].extention}`,
-        await fetchFile(files[0].raw)
+        `${file.name}.${file.extention}`,
+        await fetchFile(file.raw)
       );
       await ffmpeg.exec([
         "-i",
-        `${files[0].name}.${files[0].extention}`,
-        `output.${convertTo.name}`,
+        `${file.name}.${file.extention}`,
+        `output.${file.convertTo.name}`,
       ]);
-      const data = await ffmpeg.readFile(`output.${convertTo.name}`);
+      const data = await ffmpeg.readFile(`output.${file.convertTo.name}`);
 
       const outputBlob = new Blob([data.buffer], {
-        type: `${files[0].type.split("/")[0]}/${convertTo.type}`,
+        type: `${file.type.split("/")[0]}/${file.convertTo.type}`,
       });
       const outputURL = URL.createObjectURL(outputBlob);
-      setOutput(outputURL);
-      setSuccess(true);
+      setFileOutput(file.id, outputURL);
+
+      setFileConvertionSuccess(file.id);
     } catch (error) {
-      setError(true);
+      setFileConvertionError(file.id);
       console.log("Errore durante la conversione:", error);
     }
 
-    setConverting(false);
+    updateFileConverting(file.id, false);
+  };
+
+  const convertFiles = async () => {
+    setConvertedFiles([]);
+
+    for (const file in files) {
+      try {
+        const convertedFile = await convertSingleFile(file);
+        setConvertedFiles((prevFiles) => [...prevFiles, convertedFile]);
+      } catch (error) {
+        console.error(
+          "Errore durante la conversione del file: ",
+          file.name,
+          error
+        );
+      }
+    }
   };
 
   const handleFileUpload = async (e) => {
-    [...e.target.files].forEach((file) => generateNewFile(file));
+    [...e.target.files].forEach((file, index) => generateNewFile(file, index));
   };
 
-  const generateNewFile = async (file) => {
+  const generateNewFile = async (file, index) => {
     console.log(file);
     let fileName = "";
     for (let i = 0; i < file.name.split(".").length - 1; i++) {
@@ -152,9 +165,10 @@ function Convert() {
     console.log("nome: " + fileName + "." + fileExtention);
 
     const newFile = {
+      id: index,
       name: fileName,
       extention: fileExtention,
-      completed: false,
+      converting: false,
       originalName: file.name,
       size: file.size,
       type: file.type,
@@ -180,12 +194,91 @@ function Convert() {
     if (fileSize >= gb) return (fileSize / gb).toFixed(2) + " GB";
   };
 
-  const resetFilesStatus = () => {
-    setFiles([]);
-    setOutput(null);
-    setConvertTo("");
-    setSuccess(null);
-    setError(null);
+  const setFileConvertTo = (fileId, convertTo) => {
+    const fileIndex = files.findIndex((file) => file.id === fileId);
+
+    if (fileIndex !== -1) {
+      const updatedFiles = [...files];
+
+      updatedFiles[fileIndex] = {
+        ...updatedFiles[fileIndex],
+        convertTo: convertTo,
+      };
+      setFiles(updatedFiles);
+    }
+  };
+
+  const updateFileConverting = (fileId, converting) => {
+    setFiles((prevFiles) => {
+      const fileIndex = prevFiles.findIndex((file) => file.id === fileId);
+
+      if (fileIndex !== -1) {
+        const updatedFiles = [...prevFiles];
+
+        updatedFiles[fileIndex] = {
+          ...updatedFiles[fileIndex],
+          converting: converting,
+        };
+        return updatedFiles;
+      }
+      return prevFiles;
+    });
+  };
+
+  const setFileConvertionSuccess = (fileId) => {
+    setFiles((prevFiles) => {
+      const fileIndex = prevFiles.findIndex((file) => file.id === fileId);
+
+      if (fileIndex !== -1) {
+        const updatedFiles = [...prevFiles];
+
+        updatedFiles[fileIndex] = {
+          ...updatedFiles[fileIndex],
+          success: true,
+        };
+        return updatedFiles;
+      }
+      return prevFiles;
+    });
+  };
+
+  const setFileConvertionError = (fileId) => {
+    setFiles((prevFiles) => {
+      const fileIndex = prevFiles.findIndex((file) => file.id === fileId);
+
+      if (fileIndex !== -1) {
+        const updatedFiles = [...prevFiles];
+
+        updatedFiles[fileIndex] = {
+          ...updatedFiles[fileIndex],
+          error: true,
+        };
+        return updatedFiles;
+      }
+      return prevFiles;
+    });
+  };
+
+  const setFileOutput = (fileId, output) => {
+    setFiles((prevFiles) => {
+      const fileIndex = prevFiles.findIndex((file) => file.id === fileId);
+
+      if (fileIndex !== -1) {
+        const updatedFiles = [...prevFiles];
+
+        updatedFiles[fileIndex] = {
+          ...updatedFiles[fileIndex],
+          output: output,
+        };
+        return updatedFiles;
+      }
+      return prevFiles;
+    });
+  };
+
+  const removeFileFromList = (fileName) => {
+    const newFiles = files.filter((file) => file.name !== fileName);
+    setFiles(newFiles);
   };
 
   useEffect(() => {
@@ -222,11 +315,10 @@ function Convert() {
                     Con lo spread operator [...] espando gli elementi al suo interno dentro un array
                     così da poter usare metodi come forEach, filter o map.
                   */
-                  [...e.dataTransfer.items].forEach((item, i) => {
+                  [...e.dataTransfer.items].forEach((item, index) => {
                     if (item.kind === "file") {
                       const file = item.getAsFile();
-                      generateNewFile(file);
-                      console.log(`file #${i} -> ${file?.type}`);
+                      generateNewFile(file, index);
                     }
                   });
                 } else {
@@ -265,7 +357,7 @@ function Convert() {
                 >
                   <span
                     className="absolute w-8 h-8 -top-2 -right-2 border rounded-full cursor-pointer flex items-center justify-center bg-white"
-                    onClick={resetFilesStatus}
+                    onClick={() => removeFileFromList(item.name)}
                   >
                     <X />
                   </span>
@@ -278,10 +370,10 @@ function Convert() {
                       {item.name}.{item.extention}
                     </h2>
                     <h4 className="ml-2 text-gray-500 text-sm">
-                      {calculateSize(item.size) || "Size"}
+                      {calculateSize(item.size)}
                     </h4>
                   </div>
-                  {!convertTo ? (
+                  {!item.convertTo ? (
                     <div className="flex items-center justify-end">
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
@@ -323,7 +415,9 @@ function Convert() {
                                 {videoMIMETypes.map((mime, index) => (
                                   <div
                                     key={index}
-                                    onClick={() => setConvertTo(mime)}
+                                    onClick={() =>
+                                      setFileConvertTo(item.id, mime)
+                                    }
                                     className="cursor-pointer border p-3 flex items-center justify-center hover:bg-gray-200 rounded-lg"
                                   >
                                     .{mime.name}
@@ -336,7 +430,9 @@ function Convert() {
                                 {audioMIMETypes.map((mime, index) => (
                                   <div
                                     key={index}
-                                    onClick={() => setConvertTo(mime)}
+                                    onClick={() =>
+                                      setFileConvertTo(item.id, mime)
+                                    }
                                     className="cursor-pointer border p-3 flex items-center justify-center hover:bg-gray-200 rounded-lg"
                                   >
                                     .{mime.name}
@@ -349,7 +445,9 @@ function Convert() {
                                 {imageMIMETypes.map((mime, index) => (
                                   <div
                                     key={index}
-                                    onClick={() => setConvertTo(mime)}
+                                    onClick={() =>
+                                      setFileConvertTo(item.id, mime)
+                                    }
                                     className="cursor-pointer border p-3 flex items-center justify-center hover:bg-gray-200 rounded-lg"
                                   >
                                     .{mime.name}
@@ -366,35 +464,37 @@ function Convert() {
                       <div className="relative">
                         <span
                           className={`absolute h-3 w-3 -top-1 -left-1 rounded-full ${
-                            converting
+                            item.converting
                               ? "bg-orange-500"
-                              : success
+                              : item.success
                               ? "bg-green-500"
-                              : error
+                              : item.error
                               ? "bg-red-500"
                               : "bg-gray-500"
                           }`}
                         >
-                          {converting && (
+                          {item.converting && (
                             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75"></span>
                           )}
                         </span>
                         <Badge>
-                          {converting
+                          {item.converting
                             ? "Conversione"
-                            : success
+                            : item.success
                             ? "Completato"
-                            : error
+                            : item.error
                             ? "Errore"
                             : "In attesa"}
                         </Badge>
                       </div>
-                      {!output ? (
+                      {!item.output ? (
                         <Button
-                          onClick={convertFile}
-                          disabled={converting || error || success}
+                          onClick={() => convertSingleFile(item)}
+                          disabled={
+                            item.converting || item.error || item.success
+                          }
                         >
-                          {converting ? (
+                          {item.converting ? (
                             <div className="flex items-center">
                               <LoaderCircle
                                 width={20}
@@ -403,14 +503,14 @@ function Convert() {
                               />
                             </div>
                           ) : (
-                            `Converti in ${convertTo.name}`
+                            `Converti in ${item.convertTo.name}`
                           )}
                         </Button>
                       ) : (
                         <div>
                           <a
-                            href={output}
-                            download={`${item.name}.${convertTo.name}`}
+                            href={item.output}
+                            download={`${item.name}.${item.convertTo.name}`}
                           >
                             <Button>Scarica</Button>
                           </a>
@@ -420,6 +520,7 @@ function Convert() {
                   )}
                 </div>
               ))}
+              <Button onClick={convertFiles}>Converti tutti</Button>
             </div>
           )}
         </div>
@@ -428,4 +529,4 @@ function Convert() {
   );
 }
 
-export default Convert;
+export default Page;
