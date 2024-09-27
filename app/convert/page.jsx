@@ -1,4 +1,4 @@
-import NoSSRWrapper from "../NoSSRWrapper";
+import NoSSRWrapper from "./NoSSRWrapper";
 import Convert from "./Convert";
 
 function Page() {

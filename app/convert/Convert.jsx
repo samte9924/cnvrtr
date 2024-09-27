@@ -22,7 +22,15 @@ import {
   Video,
   X,
 } from "lucide-react";
+import { SiGithub } from "react-icons/si";
 import { useEffect, useRef, useState } from "react";
+import localFont from "next/font/local";
+import Link from "next/link";
+
+const playwriteDE = localFont({
+  src: "../_fonts/PlaywriteDEGrund-Regular.ttf",
+  display: "swap",
+});
 
 const icons = {
   video: <Video width={30} height={30} />,
@@ -72,13 +80,25 @@ function Convert() {
   const [files, setFiles] = useState([]);
   const [areaFocus, setAreaFocus] = useState(false);
 
+  const [ready, setReady] = useState(false);
+  const [completed, setCompleted] = useState(false);
+
+  // Ffmpeg viene caricato appena il componente viene montato
+  // usando useEffect(), lasciando però l'array di dipendenze vuoto
+  // in modo da non fare eseguire il codice ogni volta che qualcosa viene aggiornato.
   useEffect(() => {
     const loadFFmpeg = async () => {
       const baseURL = "https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd";
+
       const ffmpeg = ffmpegRef.current;
+      /* 
+      Ogni volta che viene "loggato" qualcosa, lo mostro in console
+      (ad esempio mentre viene convertito un file)
+
       ffmpeg.on("log", ({ message }) => {
         console.log(message);
       });
+      */
 
       try {
         await ffmpeg.load({
@@ -100,6 +120,7 @@ function Convert() {
   }, []);
 
   const convertSingleFile = async (file) => {
+    // se non è stato scelto il tipo di conversione, annullo
     if (!file.convertTo) return;
 
     const ffmpeg = ffmpegRef.current;
@@ -110,6 +131,7 @@ function Convert() {
         `${file.name}.${file.extention}`,
         await fetchFile(file.raw)
       );
+
       await ffmpeg.exec([
         "-i",
         `${file.name}.${file.extention}`,
@@ -123,9 +145,9 @@ function Convert() {
       const outputURL = URL.createObjectURL(outputBlob);
       setFileOutput(file.id, outputURL);
 
-      setFileConvertionSuccess(file.id);
+      setFileConversionSuccess(file.id);
     } catch (error) {
-      setFileConvertionError(file.id);
+      setFileConversionError(file.id);
       console.log("Errore durante la conversione:", error);
     }
 
@@ -133,10 +155,22 @@ function Convert() {
   };
 
   const convertAllFiles = async () => {
-    console.log("all");
+    let completed = true;
     for (const file of files) {
       await convertSingleFile(file);
     }
+    setCompleted(completed);
+  };
+
+  const checkAllFilesConversionAvailable = (files) => {
+    let allFilesReady = true;
+    for (const file of files) {
+      if (!file.convertTo) {
+        allFilesReady = false;
+        break;
+      }
+    }
+    setReady(allFilesReady);
   };
 
   const downloadSingleFile = (file) => {
@@ -151,6 +185,7 @@ function Convert() {
       document.body.appendChild(a);
       a.click();
 
+      // libero la memoria dopo il download
       URL.revokeObjectURL(file.url);
       document.body.removeChild(a);
     } catch (error) {
@@ -164,17 +199,31 @@ function Convert() {
     }
   };
 
+  // gestisco l'upload dei file quando viene cliccata l'area di upload
   const handleFileUpload = async (e) => {
-    [...e.target.files].forEach((file, index) => generateNewFile(file, index));
+    [...e.target.files].forEach((file, index) =>
+      generateNewFileObject(file, index)
+    );
   };
 
-  const generateNewFile = async (file, index) => {
+  // Creo un nuovo oggetto file che copia gli attributi dell'istanza file
+  // ottenuta dal file input, e inserisco quest'ultima come attributo che userò
+  // per generare l'input per la conversione.
+  const generateNewFileObject = async (file, index) => {
+    // Il nome effettivo del file comprende tutto ciò prima dell'ultimo "."
     let fileName = "";
     for (let i = 0; i < file.name.split(".").length - 1; i++) {
       fileName += file.name.split(".")[i];
     }
+    // L'estensione del file comprende tutto ciò che è dopo l'ultimo "."
     const fileExtention = file.name.split(".")[file.name.split(".").length - 1];
 
+    // Uso index per seguire l'ordine in cui i file vengono inseriti nell'array,
+    // converting indica lo stato di conversione del file,
+    // originalName è il nome originale dell'istanza File,
+    // size è la grandezza in bytes del file,
+    // type è il tipo di file (es. image/png)
+    // raw è l'istanza File
     const newFile = {
       id: index,
       name: fileName,
@@ -187,21 +236,26 @@ function Convert() {
       raw: file,
     };
 
+    // Aggiorno i file modificando la versione più recente dell'array
     setFiles((prevFiles) => [...prevFiles, newFile]);
+
+    setReady(false);
+    setCompleted(false);
   };
 
-  const calculateSize = (fileSize) => {
-    const kb = 1000;
-    const mb = 1000000;
-    const gb = 1000000000;
+  const calculateSize = (sizeBytes) => {
+    const sizes = ["Bytes", "KB", "MB", "GB", "TB"];
 
-    if (fileSize >= kb && fileSize < mb)
-      return (fileSize / kb).toFixed(2) + " KB";
-    if (fileSize >= mb && fileSize < gb)
-      return (fileSize / mb).toFixed(2) + " MB";
-    if (fileSize >= gb) return (fileSize / gb).toFixed(2) + " GB";
+    if (sizeBytes === 0) return "0 Byte";
+
+    // Math.log() ritorna il logaritmo naturale di un numero
+    const index = Math.floor(Math.log(sizeBytes) / Math.log(1024));
+    const size = (sizeBytes / Math.pow(1024, index)).toFixed(2); // 2 cifre decimali
+
+    return size + " " + sizes[index];
   };
 
+  // imposta il formato in cui verrà convertito il singolo file
   const setFileConvertTo = (fileId, convertTo) => {
     setFiles((prevFiles) => {
       const fileIndex = prevFiles.findIndex((file) => file.id === fileId);
@@ -213,6 +267,10 @@ function Convert() {
           ...updatedFiles[fileIndex],
           convertTo: convertTo,
         };
+
+        // verifico se tutti i file sono pronti per la conversione
+        checkAllFilesConversionAvailable(updatedFiles);
+
         return updatedFiles;
       }
       return prevFiles;
@@ -236,7 +294,7 @@ function Convert() {
     });
   };
 
-  const setFileConvertionSuccess = (fileId) => {
+  const setFileConversionSuccess = (fileId) => {
     setFiles((prevFiles) => {
       const fileIndex = prevFiles.findIndex((file) => file.id === fileId);
 
@@ -253,7 +311,7 @@ function Convert() {
     });
   };
 
-  const setFileConvertionError = (fileId) => {
+  const setFileConversionError = (fileId) => {
     setFiles((prevFiles) => {
       const fileIndex = prevFiles.findIndex((file) => file.id === fileId);
 
@@ -295,24 +353,44 @@ function Convert() {
   return (
     <div className="w-full">
       <div className="max-w-[90%] mx-auto my-20 flex flex-col justify-center items-center">
-        <h2 className="text-5xl">Convert files without limits</h2>
+        <div className="flex flex-col items-center justify-center gap-5">
+          <h2 className={`${playwriteDE.className} text-5xl`}>cnvrtr.io</h2>
+          <h3 className="text-lg">
+            Converti file illimitati direttamente dal tuo browser.{" "}
+            <Link
+              href={"/about"}
+              className="text-sky-500 underline hover:text-sky-600"
+            >
+              Scopri di più
+            </Link>
+          </h3>
+          <div>
+            <a href="https://github.com/samte9924/cnvrtr" target="_blank">
+              <SiGithub className="w-8 h-8 rounded-full" />
+            </a>
+          </div>
+        </div>
         <div className="w-full mt-10 p-5">
           {files.length === 0 ? (
             <div
               className="border-2 w-full h-[400px] mx-auto flex items-center justify-center p-3 rounded-3xl shadow-sm"
               onDragOver={(e) => {
+                // vengono spostati i file sull'area di upload
                 e.preventDefault();
                 setAreaFocus(true);
               }}
               onDragLeave={(e) => {
+                // i file vengono spostati dall'area
                 e.preventDefault();
                 setAreaFocus(false);
               }}
               onDragEnd={(e) => {
+                // viene annullato lo spostamento
                 e.preventDefault();
                 setAreaFocus(false);
               }}
               onDrop={(e) => {
+                // i file vengono rilasciati nell'area
                 e.preventDefault();
                 setAreaFocus(false);
                 if (e.dataTransfer.items) {
@@ -323,9 +401,10 @@ function Convert() {
                     così da poter usare metodi come forEach, filter o map.
                   */
                   [...e.dataTransfer.items].forEach((item, index) => {
+                    // se il file è di tipo "file"
                     if (item.kind === "file") {
                       const file = item.getAsFile();
-                      generateNewFile(file, index);
+                      generateNewFileObject(file, index);
                     }
                   });
                 }
@@ -336,6 +415,7 @@ function Convert() {
                 type={"file"}
                 className="hidden"
                 onChange={handleFileUpload}
+                multiple
               />
               <Label
                 htmlFor={"uploadArea"}
@@ -499,11 +579,7 @@ function Convert() {
                         >
                           {item.converting ? (
                             <div className="flex items-center">
-                              <LoaderCircle
-                                width={20}
-                                height={20}
-                                className="animate-spin"
-                              />
+                              <LoaderCircle className="animate-spin" />
                             </div>
                           ) : (
                             `Converti in ${item.convertTo.name}`
@@ -518,8 +594,21 @@ function Convert() {
                   )}
                 </div>
               ))}
-              <Button onClick={convertAllFiles}>Converti tutti</Button>
-              <Button onClick={downloadAllFiles}>Scarica tutti</Button>
+              <div className="w-full flex flex-col items-end justify-center gap-5">
+                {!completed ? (
+                  <Button
+                    onClick={convertAllFiles}
+                    disabled={!ready}
+                    className="px-10 py-5"
+                  >
+                    Converti tutti
+                  </Button>
+                ) : (
+                  <Button onClick={downloadAllFiles} className="px-10 py-5">
+                    Scarica tutti
+                  </Button>
+                )}
+              </div>
             </div>
           )}
         </div>
