@@ -1,15 +1,12 @@
-import { Button } from "@/components/ui/button";
-import Link from "next/link";
+import NoSSRWrapper from "../components/home/NoSSRWrapper";
+import Convert from "../components/home/Convert";
 
-export default function Home() {
+function Page() {
   return (
-    <div>
-      <h2>Home</h2>
-      <div>
-        <Link href={"/convert"}>
-          <Button>Convert</Button>
-        </Link>
-      </div>
-    </div>
+    <NoSSRWrapper>
+      <Convert />
+    </NoSSRWrapper>
   );
 }
+
+export default Page;

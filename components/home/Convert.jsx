@@ -28,7 +28,7 @@ import localFont from "next/font/local";
 import Link from "next/link";
 
 const playwriteDE = localFont({
-  src: "../_fonts/PlaywriteDEGrund-Regular.ttf",
+  src: "../../app/_fonts/PlaywriteDEGrund-Regular.ttf",
   display: "swap",
 });
 
