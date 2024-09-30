@@ -143,9 +143,8 @@ function Convert() {
         type: `${file.type.split("/")[0]}`,
       });
       const outputURL = URL.createObjectURL(outputBlob);
-      setFileOutput(file.id, outputURL);
-
       setFileConversionSuccess(file.id);
+      setFileOutput(file.id, outputURL);
     } catch (error) {
       setFileConversionError(file.id);
       console.log("Errore durante la conversione:", error);
@@ -171,6 +170,17 @@ function Convert() {
       }
     }
     setReady(allFilesReady);
+  };
+
+  const checkAllFilesConverted = (files) => {
+    let allFilesCompleted = true;
+    for (const file of files) {
+      if (!file.success) {
+        allFilesCompleted = false;
+        break;
+      }
+    }
+    setCompleted(allFilesCompleted);
   };
 
   const downloadSingleFile = (file) => {
@@ -339,6 +349,8 @@ function Convert() {
           ...updatedFiles[fileIndex],
           output: output,
         };
+
+        checkAllFilesConverted(updatedFiles);
         return updatedFiles;
       }
       return prevFiles;
@@ -348,6 +360,10 @@ function Convert() {
   const removeFileFromList = (fileName) => {
     const newFiles = files.filter((file) => file.name !== fileName);
     setFiles(newFiles);
+  };
+
+  const resetFiles = () => {
+    setFiles([]);
   };
 
   return (
@@ -594,7 +610,14 @@ function Convert() {
                   )}
                 </div>
               ))}
-              <div className="w-full flex flex-col items-end justify-center gap-5">
+              <div className="w-full flex items-center justify-end gap-5">
+                <Button
+                  variant="outline"
+                  onClick={resetFiles}
+                  className="px-10 py-5"
+                >
+                  Reset
+                </Button>
                 {!completed ? (
                   <Button
                     onClick={convertAllFiles}
