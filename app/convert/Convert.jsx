@@ -211,9 +211,12 @@ function Convert() {
 
   // gestisco l'upload dei file quando viene cliccata l'area di upload
   const handleFileUpload = async (e) => {
-    [...e.target.files].forEach((file, index) =>
-      generateNewFileObject(file, index)
-    );
+    [...e.target.files].forEach((file, index) => {
+      const mime = file.type.split("/")[0];
+      if (mime === "image" || mime === "video" || mime === "audio") {
+        generateNewFileObject(file, index);
+      }
+    });
   };
 
   // Creo un nuovo oggetto file che copia gli attributi dell'istanza file
@@ -372,7 +375,10 @@ function Convert() {
         <div className="flex flex-col items-center justify-center gap-5">
           <h2 className={`${playwriteDE.className} text-5xl`}>cnvrtr.io</h2>
           <h3 className="text-lg">
-            Converti file illimitati direttamente dal tuo browser.{" "}
+            <span>
+              Converti file audio, video e immagini direttamente dal tuo
+              browser.{" "}
+            </span>
             <Link
               href={"/about"}
               className="text-sky-500 underline hover:text-sky-600"
@@ -432,6 +438,7 @@ function Convert() {
                 className="hidden"
                 onChange={handleFileUpload}
                 multiple
+                accept="image/*, video/*, audio/*"
               />
               <Label
                 htmlFor={"uploadArea"}
